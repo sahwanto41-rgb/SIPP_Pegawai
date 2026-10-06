@@ -186,21 +186,30 @@ function loadFA(){return FAr||(FAr=(async()=>{if(!window.faceapi)throw new Error
 const dst=(a,b)=>Math.hypot(...a.map((x,i)=>x-b[i])),okF=e=>(e.faces||[]).some(f=>f.length==128);
 async function faceDesc(){const r=await faceapi.detectSingleFace($('#vid'),new faceapi.TinyFaceDetectorOptions({inputSize:320,scoreThreshold:.5})).withFaceLandmarks().withFaceDescriptor();return r?{d:Array.from(r.descriptor),box:r.detection.box}:null}
 function inFrame(b){const v=$('#vid'),w=v.videoWidth,h=v.videoHeight,cx=(b.x+b.width/2)/w,cy=(b.y+b.height/2)/h,r=b.width/w;return r>.2&&r<.85&&cx>.25&&cx<.75&&cy>.2&&cy<.8}
-function matchFace(d){let e=null,m=9;active().forEach(x=>(x.faces||[]).forEach(f=>{if(f.length!=128)return;const t=dst(d,f);if(t<m){m=t;e=x}}));return{e,dist:m}}
+function matchFace(d){let e=null,m=9,n=0;active().forEach(x=>(x.faces||[]).forEach(f=>{if(f.length!=128)return;n++;const t=dst(d,f);if(t<m){m=t;e=x}}));return{e,dist:m,n}}
 async function capFaces(el,T){try{await loadFA()}catch(e){el.textContent='Model deteksi wajah gagal dimuat. Periksa internet lalu coba lagi.';return null}
 const out=[];for(let i=0;i<T.length;i++){el.textContent=T[i]+` (${i+1}/${T.length})`;await slp(1200);let f=null;for(let k=0;k<8&&!f;k++){f=await faceDesc();if(!f)await slp(400)}
 if(!f){el.textContent='Wajah tidak terdeteksi. Perbaiki cahaya/posisi lalu ulangi.';return null}out.push(f.d)}
 if(out.some(d=>dst(d,out[0])>.6)){el.textContent='Sampel wajah tidak konsisten. Ulangi dengan satu wajah saja.';return null}return out}
+async function faceLand(){const r=await faceapi.detectSingleFace($('#vid'),new faceapi.TinyFaceDetectorOptions({inputSize:224,scoreThreshold:.5})).withFaceLandmarks();if(!r)return null;const L=r.landmarks,ea=p=>(Math.hypot(p[1].x-p[5].x,p[1].y-p[5].y)+Math.hypot(p[2].x-p[4].x,p[2].y-p[4].y))/(2*Math.hypot(p[0].x-p[3].x,p[0].y-p[3].y));return{box:r.detection.box,ear:(ea(L.getLeftEye())+ea(L.getRightEye()))/2}}
 async function autoScan(){const id=++ASid,R=$('#sr');R.innerHTML='<div class="res">Memuat deteksi wajah…</div>';
 try{await loadFA()}catch(e){if(id==ASid)R.innerHTML='<div class="res no"><b>Model deteksi wajah gagal dimuat.</b><br>Periksa internet, lalu buka ulang menu Scan.</div>';return}
-let ok=0;const hint=m=>{if(id==ASid&&!$('#sb').disabled)R.innerHTML=`<div class="res" style="opacity:.85">${m}</div>`};
-while(id==ASid&&view=='scan'&&stream){let f=null;try{f=await faceDesc()}catch(e){}
+let base=0,n=0,closed=0;const hint=m=>{const bt=$('#sb');if(id==ASid&&!(bt&&bt.disabled))R.innerHTML=`<div class="res" style="opacity:.9">${m}</div>`};
+while(id==ASid&&view=='scan'&&stream){let f=null;try{f=await faceLand()}catch(e){}
 if(id!=ASid)return;
-if(!f){ok=0;hint('Posisikan wajah di dalam bingkai')}
-else if(!inFrame(f.box)){ok=0;hint('Dekatkan wajah & tepat di tengah bingkai')}
-else{const m=matchFace(f.d);if(m.e&&m.dist<=TH){ok++;hint('Wajah dikenali, tahan sebentar… ('+ok+'/3)');
-if(ok>=3){const r=await doScan(f.d);if(r)return;ok=0;await slp(4000);continue}}else{ok=0;hint('Wajah belum cocok dengan data terdaftar')}}
-await slp(400)}}
+if(!f){base=n=closed=0;hint('Posisikan wajah di dalam bingkai');await slp(150);continue}
+if(!inFrame(f.box)){base=n=closed=0;hint('Dekatkan wajah & tepat di tengah bingkai');await slp(150);continue}
+hint('Wajah terdeteksi. <b>Kedipkan mata</b> untuk presensi');
+if(!base)base=f.ear;
+if(f.ear<base*.7&&n>=4)closed=1;
+else{if(f.ear>=base*.75)base=base*.9+f.ear*.1;n++;
+if(closed&&f.ear>=base*.85){closed=0;let d=null;for(let k=0;k<3&&!d;k++)d=await faceDesc();
+if(id!=ASid)return;
+if(!d){hint('Wajah tidak terbaca, kedipkan mata lagi');continue}
+const m=matchFace(d.d);
+if(m.e&&m.dist<=TH){const r=await doScan(d.d);if(r)return;await slp(4000);base=n=0;continue}
+hint(m.n?'Wajah belum cocok (jarak '+m.dist.toFixed(2)+', batas '+TH+')':'Belum ada data wajah baru, registrasi ulang')}}
+await slp(60)}}
 async function faceOK(){if(!window.FaceDetector)return 1;try{return(await new FaceDetector().detect($('#vid'))).length>0}catch(e){return 1}}
 const gps=()=>new Promise((ok,no)=>{if(DB.cfg.sim)return ok({latitude:DB.cfg.lat+.0002,longitude:DB.cfg.lng+.0001,accuracy:15});if(!navigator.geolocation)return no();navigator.geolocation.getCurrentPosition(p=>ok(p.coords),no,{enableHighAccuracy:true,timeout:15000})});
 function dist(a,b,c,d){const R=6371000,r=x=>x*Math.PI/180,h=Math.sin(r(c-a)/2)**2+Math.cos(r(a))*Math.cos(r(c))*Math.sin(r(d-b)/2)**2;return 2*R*Math.asin(Math.sqrt(h))}
@@ -208,11 +217,12 @@ function mapSVG(dm,rad){const sc=130/(Math.max(rad,dm||0)*1.2),px=dm==null?null:
 function vScan(){const e=meEmp();$('#mn').innerHTML=`<h2>SCAN WAJAH UNTUK ABSENSI</h2>${dlBanner()}<div class="card"><div class="cam"><video id="vid" playsinline muted></video>${FG()}</div><p style="text-align:center;color:var(--mu)">Posisikan wajah di dalam garis putus-putus</p><div style="text-align:center"><button class="btn g" style="padding:14px 34px;font-size:16px" id="sb" onclick="doScan()">📷 SCAN &amp; ABSEN</button></div><div id="sr"></div></div>
 <div class="card"><h3>📍 TITIK ABSENSI SEKOLAH ${DB.cfg.locked?'🔒':''}</h3>Lat: ${DB.cfg.lat} · Lng: ${DB.cfg.lng} · Radius: ${DB.cfg.rad} m</div>`;
 if(!e)toast('Akun ini tidak terhubung data pegawai','er');openCam().then(ok=>ok&&autoScan())}
-async function doScan(D0){const b=$('#sb'),R=$('#sr');if(!stream)return toast('Kamera belum aktif','er');b.disabled=true;b.textContent='Memproses...';const fail=(m,n)=>{R.innerHTML=`<div class="res no"><b>${m}</b></div>`;toast(m,'er');n&&notif(n);b.disabled=false;b.textContent='📷 SCAN & ABSEN'};
+async function doScan(D0){if(!D0){toast('Kedipkan mata ke kamera untuk presensi','er');return}const b=$('#sb'),R=$('#sr');if(!stream)return toast('Kamera belum aktif','er');b.disabled=true;b.textContent='Memproses...';const fail=(m,n)=>{R.innerHTML=`<div class="res no"><b>${m}</b></div>`;toast(m,'er');n&&notif(n);b.disabled=false;b.textContent='📷 SCAN & ABSEN'};
 let f0=D0?{d:D0}:null;try{await loadFA();if(!f0)f0=await faceDesc()}catch(e){return fail('Model deteksi wajah belum siap','Periksa koneksi internet.')}
 if(!f0)return fail('Wajah belum terdeteksi','Wajah belum dikenali.');
 const mt=matchFace(f0.d),best=mt.e;
-if(!best||mt.dist>TH)return fail('WAJAH TIDAK TERDAFTAR','Wajah tidak dikenali.');
+if(!mt.n)return fail('DATA WAJAH BARU BELUM ADA DI PERANGKAT INI','Registrasi wajah ulang diperlukan.');
+if(!best||mt.dist>TH)return fail('WAJAH TIDAK TERDAFTAR (jarak '+mt.dist.toFixed(2)+', batas '+TH+')','Wajah tidak dikenali.');
 if(ME.role=='PEGAWAI'&&best.nip!=ME.u)return fail('WAJAH TIDAK SESUAI AKUN LOGIN');
 let c;try{c=await gps()}catch(e){return fail('GPS belum aktif','GPS belum aktif.')}
 const d=dist(DB.cfg.lat,DB.cfg.lng,c.latitude,c.longitude),ok=d<=DB.cfg.rad,dx=(c.longitude-DB.cfg.lng)*111320*Math.cos(DB.cfg.lat*Math.PI/180),dy=(c.latitude-DB.cfg.lat)*110574,m=mapSVG({x:dx,y:dy},DB.cfg.rad);
@@ -225,8 +235,8 @@ save();log('Absensi '+jenis+' '+best.nip);sync(rec(best,jenis,st,n,loc)).then(ok
 // ---- employees
 const toggleEmp=n=>ask('Ubah status aktif pegawai?',()=>{const e=emp(n);e.active=e.active?0:1;log('Status pegawai '+n);go('emp')});
 const resetFace=n=>ask('Reset data wajah pegawai ini? Wajah di perangkat pegawai ikut terhapus saat sinkron, dan pegawai harus registrasi ulang.',()=>{emp(n).faces=[];emp(n).dev='RESET';log('Reset wajah '+n);go('emp')});
-function regFace(n){modal(`<h3>Registrasi Wajah — ${emp(n).name}</h3><div class="cam" style="max-width:300px"><video id="vid" playsinline muted></video>${FG()}</div><p id="rg">Gerakkan wajah secara perlahan sesuai petunjuk untuk mendapatkan beberapa sampel wajah.</p><button class="btn g" id="rb">Mulai Ambil 6 Sampel</button> <button class="btn o" onclick="closeM()">Tutup</button><p style="font-size:11px;color:var(--mu)">Hanya template numerik yang disimpan, bukan foto wajah.</p>`);
-openCam().then(()=>{$('#rb').onclick=async()=>{let arr;arr=await capFaces($('#rg'),['Hadap lurus','Tengok sedikit ke kiri','Tengok sedikit ke kanan','Angkat dagu sedikit','Tundukkan sedikit','Hadap lurus lagi']);if(!arr)return;emp(n).faces=arr;log('Registrasi wajah '+n);closeM();go('emp');toast('Wajah terdaftar','ok')}})}
+function regFace(n){modal(`<h3>Registrasi Wajah — ${emp(n).name}</h3><div class="cam" style="max-width:300px"><video id="vid" playsinline muted></video>${FG()}</div><p id="rg">Gerakkan wajah secara perlahan sesuai petunjuk untuk mendapatkan beberapa sampel wajah.</p><button class="btn g" id="rb">Mulai Ambil 3 Sampel</button> <button class="btn o" onclick="closeM()">Tutup</button><p style="font-size:11px;color:var(--mu)">Hanya template numerik yang disimpan, bukan foto wajah.</p>`);
+openCam().then(()=>{$('#rb').onclick=async()=>{let arr;arr=await capFaces($('#rg'),['Hadap lurus','Tengok sedikit ke kiri','Tengok sedikit ke kanan']);if(!arr)return;emp(n).faces=arr;log('Registrasi wajah '+n);closeM();go('emp');toast('Wajah terdaftar','ok')}})}
 // ---- recap
 function monthDays(y,m){const r=[];for(let d=new Date(y,m,1);d.getMonth()==m;d.setDate(d.getDate()+1))r.push(new Date(d));return r}
 function filt(){const t=new Date();return`<div class="row"><div><label>Bulan</label><select id="fm">${MON.map((m,i)=>`<option value="${i}" ${i==t.getMonth()?'selected':''}>${m}</option>`)}</select></div><div><label>Tahun</label><input id="fy" type="number" value="${t.getFullYear()}"></div>${ME.role=='PEGAWAI'?'':`<div><label>Pegawai</label><select id="fe">${active().map(e=>`<option value="${e.nip}">${e.name}</option>`)}</select></div>`}</div>`}
@@ -405,7 +415,7 @@ function unlockSheet(){modal(`<h3>🔓 Buka Kunci URL Google Sheets</h3><label>P
 async function confUnlockSheet(){if(await sha(pw.value)!=ME.h)return toast('Password salah','er');if(!nt.value.trim())return toast('Catatan wajib diisi','er');const c=DB.cfg;c.sheetLocked=0;DB.locLog.push({t:new Date().toLocaleString('id'),u:ME.name,lat:c.lat,lng:c.lng,rad:c.rad,note:'BUKA KUNCI URL SHEETS: '+nt.value});log('Buka kunci URL Sheets');save();closeM();go('sheets');toast('Kunci URL dibuka','ok')}
 function vRegFace(){const e=meEmp();if(e.dev&&e.dev!='RESET'&&e.dev!=DEV){$('#mn').innerHTML=`<h2>Registrasi Wajah</h2><div class="card"><div class="res no"><b>Wajah Anda sudah terdaftar di perangkat lain.</b><br>Data wajah hanya tersimpan &amp; berlaku untuk 1 perangkat. Untuk pindah perangkat, minta Admin mereset data wajah Anda lalu daftar ulang di perangkat baru.</div></div>`;return}
 $('#mn').innerHTML=`<h2>Registrasi Wajah Pertama</h2><div class="card"><p>Selamat datang, <b>${e.name}</b>. Sebelum memakai SIPP, daftarkan wajah Anda terlebih dahulu. Gerakkan wajah secara perlahan sesuai petunjuk untuk mendapatkan beberapa sampel wajah.</p><div class="cam"><video id="vid" playsinline muted></video>${FG()}</div><p id="rg" style="text-align:center">Posisikan wajah di dalam garis putus-putus</p><div style="text-align:center"><button class="btn g" id="rb" style="padding:12px 28px">Mulai Registrasi (6 sampel)</button></div><p style="font-size:11px;color:var(--mu)">Hanya template numerik yang disimpan, bukan foto wajah. Perubahan data wajah selanjutnya hanya dapat dilakukan oleh Admin.</p></div>`;
-openCam().then(ok=>{if(!ok)return;$('#rb').onclick=async()=>{$('#rb').disabled=true;let arr,T=['Hadap lurus','Tengok sedikit ke kiri','Tengok sedikit ke kanan','Angkat dagu sedikit','Tundukkan sedikit','Hadap lurus lagi'];arr=await capFaces($('#rg'),T);if(!arr){$('#rb').disabled=false;return}
+openCam().then(ok=>{if(!ok)return;$('#rb').onclick=async()=>{$('#rb').disabled=true;let arr,T=['Hadap lurus','Tengok sedikit ke kiri','Tengok sedikit ke kanan'];arr=await capFaces($('#rg'),T);if(!arr){$('#rb').disabled=false;return}
 if(DB.emp.some(o=>o.nip!=e.nip&&o.faces.some(f=>f.length==128&&dst(arr[0],f)<.45))){$('#rb').disabled=false;$('#rg').textContent='';return toast('Wajah ini sudah terdaftar atas nama pegawai lain. Hubungi Admin.','er')}
 e.faces=arr;e.dev=DEV;log('Registrasi wajah mandiri '+e.nip);save();toast('Wajah berhasil didaftarkan','ok');go('scan')}})}
 function pasteUrl(){navigator.clipboard.readText().then(t=>{$('#c8').value=t.trim();toast('URL ditempel — klik Simpan URL','ok')}).catch(()=>toast('Izin clipboard ditolak. Tempel manual dengan Ctrl+V.','er'))}
