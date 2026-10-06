@@ -146,7 +146,7 @@ function log(a){DB.audit.push({t:new Date().toISOString(),u:ME?.name||'-',a});sa
 function modal(h){$('#mb').innerHTML=h;$('#mod').style.display='grid'}function closeM(){$('#mod').style.display='none';stopCam()}
 function ask(msg,fn){window._fn=fn;modal(`<h3>Konfirmasi</h3><p>${msg}</p><div class="row"><button class="btn o" onclick="closeM()">Batal</button><button class="btn" onclick="closeM();_fn()">Ya, lanjutkan</button></div>`)}
 $('#lf').onsubmit=async e=>{e.preventDefault();const h=await sha(lp.value),un=lu.value.trim(),b=$('#lf button');
-if(DB.cfg.sheetUrl){b.disabled=true;b.textContent='Menghubungkan ke Google Sheets...';const r=await api('login',{u:un,h});b.disabled=false;b.textContent='MASUK';
+if(DB.cfg.sheetUrl){b.disabled=true;b.textContent='MASUK';const r=await api('login',{u:un,h});b.disabled=false;b.textContent='MASUK';
 if(r&&r.err=='auth')return toast('Username/NIP atau password salah','er');
 if(r&&r.ok){applyPull(r);PULLED=1}else if(!r)toast('Google Sheets tidak terjangkau'+(LASTERR?' ('+LASTERR+')':'')+' — memakai data lokal. Data TIDAK dikirim ke Sheets sebelum berhasil terhubung.','er');else if(r.empty)toast(ERRT.empty,'er')}
 const u=DB.users.find(x=>x.u==un&&x.h==h);if(!u)return toast('Username/NIP atau password salah','er');ME=u;log('Login');$('#login').style.display='none';$('#app').style.display='block';view=u.role=='PEGAWAI'?'scan':'dash';$('#un').textContent=u.name;$('#ur').textContent=u.role;buildNav();go(view)};
@@ -180,38 +180,39 @@ async function openCam(){try{stream=await navigator.mediaDevices.getUserMedia({v
 function vec(){const v=$('#vid'),c=document.createElement('canvas');c.width=c.height=20;const x=c.getContext('2d'),w=v.videoWidth,h=v.videoHeight,s=Math.min(w,h)*.6;x.drawImage(v,(w-s)/2,(h-s)/2,s,s,0,0,20,20);const d=x.getImageData(0,0,20,20).data,r=[];for(let i=0;i<d.length;i+=4)r.push(.3*d[i]+.59*d[i+1]+.11*d[i+2]);const m=r.reduce((a,b)=>a+b)/r.length,z=r.map(p=>p-m),n=Math.hypot(...z)||1;return z.map(p=>+(p/n).toFixed(3))}
 const cos=(a,b)=>a.reduce((s,x,i)=>s+x*b[i],0);
 // ---- deteksi & pengenalan wajah (face-api.js, descriptor 128-d)
-const MU='https://cdn.jsdelivr.net/npm/@vladmandic/face-api@1.7.12/model/',TH=.55,slp=ms=>new Promise(r=>setTimeout(r,ms));
+const MU='https://cdn.jsdelivr.net/npm/@vladmandic/face-api@1.7.12/model/',TH=.6,slp=ms=>new Promise(r=>setTimeout(r,ms));
 let FAr=null,ASid=0;
 function loadFA(){return FAr||(FAr=(async()=>{if(!window.faceapi)throw new Error('lib');await Promise.all([faceapi.nets.tinyFaceDetector.loadFromUri(MU),faceapi.nets.faceLandmark68Net.loadFromUri(MU),faceapi.nets.faceRecognitionNet.loadFromUri(MU)])})().catch(e=>{FAr=null;throw e}))}
 const dst=(a,b)=>Math.hypot(...a.map((x,i)=>x-b[i])),okF=e=>(e.faces||[]).some(f=>f.length==128);
 async function faceDesc(){const r=await faceapi.detectSingleFace($('#vid'),new faceapi.TinyFaceDetectorOptions({inputSize:320,scoreThreshold:.5})).withFaceLandmarks().withFaceDescriptor();return r?{d:Array.from(r.descriptor),box:r.detection.box}:null}
-function inFrame(b){const v=$('#vid'),w=v.videoWidth,h=v.videoHeight,cx=(b.x+b.width/2)/w,cy=(b.y+b.height/2)/h,r=b.width/w;return r>.2&&r<.85&&cx>.25&&cx<.75&&cy>.2&&cy<.8}
+function inFrame(b){const v=$('#vid'),w=v.videoWidth,h=v.videoHeight,cx=(b.x+b.width/2)/w,cy=(b.y+b.height/2)/h,r=b.width/w;return r>.15&&r<.9&&cx>.15&&cx<.85&&cy>.1&&cy<.9}
 function matchFace(d){let e=null,m=9,n=0;active().forEach(x=>(x.faces||[]).forEach(f=>{if(f.length!=128)return;n++;const t=dst(d,f);if(t<m){m=t;e=x}}));return{e,dist:m,n}}
 async function capFaces(el,T){try{await loadFA()}catch(e){el.textContent='Model deteksi wajah gagal dimuat. Periksa internet lalu coba lagi.';return null}
 const out=[];for(let i=0;i<T.length;i++){el.textContent=T[i]+` (${i+1}/${T.length})`;await slp(1200);let f=null;for(let k=0;k<8&&!f;k++){f=await faceDesc();if(!f)await slp(400)}
 if(!f){el.textContent='Wajah tidak terdeteksi. Perbaiki cahaya/posisi lalu ulangi.';return null}out.push(f.d)}
 if(out.some(d=>dst(d,out[0])>.6)){el.textContent='Sampel wajah tidak konsisten. Ulangi dengan satu wajah saja.';return null}return out}
 async function faceLand(){const r=await faceapi.detectSingleFace($('#vid'),new faceapi.TinyFaceDetectorOptions({inputSize:224,scoreThreshold:.5})).withFaceLandmarks();if(!r)return null;const L=r.landmarks,ea=p=>(Math.hypot(p[1].x-p[5].x,p[1].y-p[5].y)+Math.hypot(p[2].x-p[4].x,p[2].y-p[4].y))/(2*Math.hypot(p[0].x-p[3].x,p[0].y-p[3].y));return{box:r.detection.box,ear:(ea(L.getLeftEye())+ea(L.getRightEye()))/2}}
-async function autoScan(){const id=++ASid,R=$('#sr');R.innerHTML='<div class="res">Memuat deteksi wajah…</div>';
+async function autoScan(){const id=++ASid,R=$('#sr');gps().catch(()=>{});R.innerHTML='<div class="res">Memuat deteksi wajah…</div>';
 try{await loadFA()}catch(e){if(id==ASid)R.innerHTML='<div class="res no"><b>Model deteksi wajah gagal dimuat.</b><br>Periksa internet, lalu buka ulang menu Scan.</div>';return}
-let base=0,n=0,closed=0;const hint=m=>{const bt=$('#sb');if(id==ASid&&!(bt&&bt.disabled))R.innerHTML=`<div class="res" style="opacity:.9">${m}</div>`};
+let base=0,n=0,closed=0,live=0;const hint=m=>{const bt=$('#sb');if(id==ASid&&!(bt&&bt.disabled))R.innerHTML=`<div class="res" style="opacity:.9">${m}</div>`};
 while(id==ASid&&view=='scan'&&stream){let f=null;try{f=await faceLand()}catch(e){}
 if(id!=ASid)return;
-if(!f){base=n=closed=0;hint('Posisikan wajah di dalam bingkai');await slp(150);continue}
-if(!inFrame(f.box)){base=n=closed=0;hint('Dekatkan wajah & tepat di tengah bingkai');await slp(150);continue}
-hint('Wajah terdeteksi. <b>Kedipkan mata</b> untuk presensi');
+if(!f){base=n=closed=live=0;hint('Posisikan wajah di dalam bingkai');await slp(150);continue}
+if(!inFrame(f.box)){base=n=closed=live=0;hint('Dekatkan wajah ke kamera, usahakan di tengah');await slp(150);continue}
+if(!live){hint('Wajah terdeteksi. <b>Kedipkan mata</b> untuk presensi');
 if(!base)base=f.ear;
 if(f.ear<base*.7&&n>=4)closed=1;
-else{if(f.ear>=base*.75)base=base*.9+f.ear*.1;n++;
-if(closed&&f.ear>=base*.85){closed=0;let d=null;for(let k=0;k<3&&!d;k++)d=await faceDesc();
-if(id!=ASid)return;
-if(!d){hint('Wajah tidak terbaca, kedipkan mata lagi');continue}
-const m=matchFace(d.d);
-if(m.e&&m.dist<=TH){const r=await doScan(d.d);if(r)return;await slp(4000);base=n=0;continue}
-hint(m.n?'Wajah belum cocok (jarak '+m.dist.toFixed(2)+', batas '+TH+')':'Belum ada data wajah baru, registrasi ulang')}}
+else{if(f.ear>=base*.75)base=base*.9+f.ear*.1;n++;if(closed&&f.ear>=base*.85){closed=0;live=Date.now()}}}
+if(live){if(Date.now()-live>7000){live=0;base=n=0;continue}
+const d=await faceDesc();if(id!=ASid)return;
+if(d){const m=matchFace(d.d);
+if(m.e&&m.dist<=TH){const r=await doScan(d.d);if(r){if(m.dist<=.5){const fe=m.e.faces;fe.push(d.d);if(fe.length>9)fe.splice(3,1);save()}return}
+if(GPSDENY)return;await slp(4000);live=0;base=n=0;continue}
+hint(m.n?'Mencocokkan wajah… (jarak '+m.dist.toFixed(2)+', batas '+TH+')':'Belum ada data wajah baru, registrasi ulang')}
+else hint('Wajah tidak terbaca, tahan posisi sebentar')}
 await slp(60)}}
 async function faceOK(){if(!window.FaceDetector)return 1;try{return(await new FaceDetector().detect($('#vid'))).length>0}catch(e){return 1}}
-const gps=()=>new Promise((ok,no)=>{if(DB.cfg.sim)return ok({latitude:DB.cfg.lat+.0002,longitude:DB.cfg.lng+.0001,accuracy:15});if(!navigator.geolocation)return no();navigator.geolocation.getCurrentPosition(p=>ok(p.coords),no,{enableHighAccuracy:true,timeout:15000})});
+let GP=null,GPSDENY=0;const gps=()=>new Promise((ok,no)=>{if(DB.cfg.sim)return ok({latitude:DB.cfg.lat+.0002,longitude:DB.cfg.lng+.0001,accuracy:15});if(GP&&Date.now()-GP.t<90000)return ok(GP.c);if(!navigator.geolocation)return no();navigator.geolocation.getCurrentPosition(p=>{GPSDENY=0;GP={c:p.coords,t:Date.now()};ok(p.coords)},e=>{GPSDENY=e&&e.code==1?1:0;no(e)},{enableHighAccuracy:true,timeout:15000,maximumAge:60000})});
 function dist(a,b,c,d){const R=6371000,r=x=>x*Math.PI/180,h=Math.sin(r(c-a)/2)**2+Math.cos(r(a))*Math.cos(r(c))*Math.sin(r(d-b)/2)**2;return 2*R*Math.asin(Math.sqrt(h))}
 function mapSVG(dm,rad){const sc=130/(Math.max(rad,dm||0)*1.2),px=dm==null?null:[150+dm.x*sc,150-dm.y*sc];return `<svg viewBox="0 0 300 300" style="width:100%;max-width:300px;border-radius:16px;background:#dbeafe;display:block"><circle cx="150" cy="150" r="${rad*sc}" fill="rgba(22,163,74,.2)" stroke="#16a34a" stroke-width="2" stroke-dasharray="5"/><text x="150" y="140" text-anchor="middle" font-size="18">🏫</text><text x="150" y="${150+rad*sc+14}" text-anchor="middle" font-size="10" fill="#1e3a8a">Radius ${rad} m</text>${px?`<circle cx="${px[0]}" cy="${px[1]}" r="7" fill="#dc2626" stroke="#fff" stroke-width="2"/>`:''}</svg>`}
 function vScan(){const e=meEmp();$('#mn').innerHTML=`<h2>SCAN WAJAH UNTUK ABSENSI</h2>${dlBanner()}<div class="card"><div class="cam"><video id="vid" playsinline muted></video>${FG()}</div><p style="text-align:center;color:var(--mu)">Posisikan wajah di dalam garis putus-putus</p><div style="text-align:center"><button class="btn g" style="padding:14px 34px;font-size:16px" id="sb" onclick="doScan()">📷 SCAN &amp; ABSEN</button></div><div id="sr"></div></div>
@@ -224,7 +225,7 @@ const mt=matchFace(f0.d),best=mt.e;
 if(!mt.n)return fail('DATA WAJAH BARU BELUM ADA DI PERANGKAT INI','Registrasi wajah ulang diperlukan.');
 if(!best||mt.dist>TH)return fail('WAJAH TIDAK TERDAFTAR (jarak '+mt.dist.toFixed(2)+', batas '+TH+')','Wajah tidak dikenali.');
 if(ME.role=='PEGAWAI'&&best.nip!=ME.u)return fail('WAJAH TIDAK SESUAI AKUN LOGIN');
-let c;try{c=await gps()}catch(e){return fail('GPS belum aktif','GPS belum aktif.')}
+let c;try{c=await gps()}catch(e){return fail('GPS belum aktif / izin lokasi ditolak','Aktifkan GPS & izinkan lokasi di browser.')}
 const d=dist(DB.cfg.lat,DB.cfg.lng,c.latitude,c.longitude),ok=d<=DB.cfg.rad,dx=(c.longitude-DB.cfg.lng)*111320*Math.cos(DB.cfg.lat*Math.PI/180),dy=(c.latitude-DB.cfg.lat)*110574,m=mapSVG({x:dx,y:dy},DB.cfg.rad);
 const _dl=dlToday(best.nip);if(!ok&&!_dl){R.innerHTML=`<div class="res no"><b>🔴 ABSENSI DITOLAK</b><br><b style="font-size:17px">⚠️ Anda berada dalam area Red Zone</b><br>Anda berada di luar area absensi sekolah.<br>Jarak dari sekolah: ${Math.round(d)} m (radius ${DB.cfg.rad} m)</div>${m}`;toast('Anda berada dalam area Red Zone','er');notif('Anda berada dalam area Red Zone — di luar area absensi.');log('Absensi ditolak (Red Zone, luar radius) '+best.nip);b.disabled=false;b.textContent='📷 SCAN & ABSEN';return}
 const n=new Date(),s=ymd(n),sc=sched(n);let a=DB.att.find(x=>x.nip==best.nip&&x.d==s),jenis,st;const loc={lat:+c.latitude.toFixed(6),lng:+c.longitude.toFixed(6),acc:Math.round(c.accuracy),dist:Math.round(d),valid:1,ts:n.toISOString()};if(_dl){loc.dl=_dl.type;loc.out=ok?0:1}
