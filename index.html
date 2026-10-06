@@ -180,7 +180,7 @@ async function openCam(){try{stream=await navigator.mediaDevices.getUserMedia({v
 function vec(){const v=$('#vid'),c=document.createElement('canvas');c.width=c.height=20;const x=c.getContext('2d'),w=v.videoWidth,h=v.videoHeight,s=Math.min(w,h)*.6;x.drawImage(v,(w-s)/2,(h-s)/2,s,s,0,0,20,20);const d=x.getImageData(0,0,20,20).data,r=[];for(let i=0;i<d.length;i+=4)r.push(.3*d[i]+.59*d[i+1]+.11*d[i+2]);const m=r.reduce((a,b)=>a+b)/r.length,z=r.map(p=>p-m),n=Math.hypot(...z)||1;return z.map(p=>+(p/n).toFixed(3))}
 const cos=(a,b)=>a.reduce((s,x,i)=>s+x*b[i],0);
 // ---- deteksi & pengenalan wajah (face-api.js, descriptor 128-d)
-const MU='https://cdn.jsdelivr.net/npm/@vladmandic/face-api@1.7.12/model/',TH=.5,slp=ms=>new Promise(r=>setTimeout(r,ms));
+const MU='https://cdn.jsdelivr.net/npm/@vladmandic/face-api@1.7.12/model/',TH=.55,slp=ms=>new Promise(r=>setTimeout(r,ms));
 let FAr=null,ASid=0;
 function loadFA(){return FAr||(FAr=(async()=>{if(!window.faceapi)throw new Error('lib');await Promise.all([faceapi.nets.tinyFaceDetector.loadFromUri(MU),faceapi.nets.faceLandmark68Net.loadFromUri(MU),faceapi.nets.faceRecognitionNet.loadFromUri(MU)])})().catch(e=>{FAr=null;throw e}))}
 const dst=(a,b)=>Math.hypot(...a.map((x,i)=>x-b[i])),okF=e=>(e.faces||[]).some(f=>f.length==128);
